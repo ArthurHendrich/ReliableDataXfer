@@ -35,14 +35,20 @@ int main() {
         exit(1);
     }
 
-    // Envie uma mensagem para o servidor
-    while(true){
-        char message[1024];
-        std::cin >> message;
-        if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {
-            std::cerr << "Erro ao enviar dados para o servidor." << std::endl;
-        }
+while (true) {
+    char message[1024];
+    std::cout << "Digite uma mensagem (ou 'exit' para sair): ";
+    std::cin.getline(message, sizeof(message)); 
+    if (strcmp(message, "exit") == 0) {
+        break; 
     }
+    strcat(message, "\r\n");
+
+    if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {
+        std::cerr << "Erro ao enviar dados para o servidor." << std::endl;
+    }
+}
+
     
     // Receba a resposta do servidor
     char buffer[1024];

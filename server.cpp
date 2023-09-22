@@ -36,6 +36,7 @@ class ClientHandler {
         int storage_bytes;
         std::string lineBuffer;
 
+        std::cout << "estamos online" << std::endl;
         while (true) {
           memset(buffer, 0, BUFFER_SIZE);
 
@@ -49,7 +50,6 @@ class ClientHandler {
             break;
           }
 
-          std::cout << "estamos online" << std::endl;
           lineBuffer += std::string(buffer, storage_bytes);
 
           if (lineBuffer.find("\r\n") != std::string::npos) {
