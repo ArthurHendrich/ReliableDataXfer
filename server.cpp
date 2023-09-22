@@ -49,6 +49,7 @@ class ClientHandler {
             break;
           }
 
+          std::cout << "estamos online" << std::endl;
           lineBuffer += std::string(buffer, storage_bytes);
 
           if (lineBuffer.find("\r\n") != std::string::npos) {
