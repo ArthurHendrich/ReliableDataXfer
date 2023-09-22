@@ -2,6 +2,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <winsock2.h>
+#include <windows.h> // use threads
 #include <ws2tcpip.h>
 
 #define PORT 443
@@ -28,7 +29,9 @@ class Utility {
 
 class ClientHandler {
   public:
-    static void Handle(int client_socket) {
+    // LPVOID => void*
+    static DWORD WINAPI Handle(LPVOID client_socket_ptr) {
+        SOCKET client_socket = (SOCKET) client_socket_ptr;  // Cast back to SOCKET type
         char buffer[BUFFER_SIZE] = {0}; 
         int storage_bytes;
         std::string lineBuffer;
@@ -38,7 +41,7 @@ class ClientHandler {
 
           if ((storage_bytes = recv(client_socket, buffer, BUFFER_SIZE, 0)) == SOCKET_ERROR) {
             std::cout << "Recv failed" << std::endl;
-            return;
+            exit(1);
           }
 
           if (storage_bytes == 0) {
@@ -108,8 +111,18 @@ class Server {
           exit(1);
         }
 
-        ClientHandler::Handle(new_socket);
+        // std::thread client_thread(ClientHandler::Handle, new_socket);
+        // client_thread.detach();
+        HANDLE client_thred;
+
+        if((client_thred = CreateThread(NULL, 0, ClientHandler::Handle, (LPVOID)new_socket, 0, NULL)) == NULL) {
+          std::cout << "Faile to creat thread" << std::endl;
+          exit(1);
+        }
+
+        CloseHandle(client_thred);
       }
+      Stop();
     }
 
     void Stop() {
@@ -133,7 +146,6 @@ class Server {
 int main() {
   Server server;
   server.Start();
-  server.Stop();
 
   WSACleanup(); 
 

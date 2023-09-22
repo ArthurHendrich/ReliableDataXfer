@@ -13,7 +13,7 @@ Before running this code, make sure you have the following:
 
 1. Clone the repository or download the source code.
 2. Open the project in your C++ development environment.
-3. Build and run the code.
+3. Build (g++ server.cpp -o test.exe -lws2_32 -std=c++11) and run the code.
 4. The server will start listening on port 443.
 
 ## Functionality
