@@ -48,6 +48,7 @@ class ClientHandler {
         int storage_bytes;
         std::string lineBuffer;
 
+        std::cout << "estamos online" << std::endl;
         while (true) {
           memset(buffer, 0, BUFFER_SIZE);
 
