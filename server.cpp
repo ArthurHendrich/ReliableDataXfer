@@ -1,15 +1,26 @@
 #include <iostream>
 #include <cstring>
 #include <unistd.h>
+
+#ifdef _WIN32
+
 #include <winsock2.h>
 #include <windows.h> // use threads
 #include <ws2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
+
+#else 
+
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <pthreads.h>
+
+#endif
 
 #define PORT 443
 #define BUFFER_SIZE 1024 
 
-#pragma comment(lib, "Ws2_32.lib")
-
+#ifdef _WIN32
 class Utility {
   public:
     static void InitializeWinSock() {
@@ -26,6 +37,7 @@ class Utility {
       }
     }
 };
+#endif
 
 class ClientHandler {
   public:
