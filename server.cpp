@@ -2,10 +2,8 @@
 #include <cstring>
 #include <unistd.h>
 
-#ifdef _WIN32
-
 #include <winsock2.h>
-#include <windows.h> // use threads
+#include <windows.h> 
 #include <ws2tcpip.h>
 #include <wincrypt.h>
 #include <sstream>
@@ -14,17 +12,10 @@
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "bcrypt.lib")
 
-#else 
-
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <pthreads.h>
-#include <openssl/md5.h>
-
-#endif
-
 #define PORT 443
 #define BUFFER_SIZE 1024 
+#define TIMEOUT_MS 1000
+
 
 class Utility {
   public:
@@ -42,14 +33,14 @@ class Utility {
       }
     }
 
-    // Checksum with md5
+    // MD5 checksum
     static std::string Checksum(const std::string& data) {
-      HCRYPTPROV hProv = 0; // Init a handle to a cryptographic service provider (CSP)
-      HCRYPTHASH hHash = 0; // Init a handle to a hash object. This object will eventually hold the MD5 hash of the input data.
-      DWORD cbHashSize = 16; // Sets the size of the hash (in bytes). MD5 produces a 128-bit (16-byte) hash.
-      DWORD dwCount = cbHashSize; // Stores the size of a DWORD, which will be used to get hash parameters.
-      BYTE RGBBufferHash[16] = {0}; // Initializes a byte array to hold the MD5 hash.
-      std::ostringstream oss; // Creates an output string stream to convert the hash bytes into a hexadecimal string representation.
+      HCRYPTPROV hProv = 0; 
+      HCRYPTHASH hHash = 0; 
+      DWORD cbHashSize = 16;
+      DWORD dwCount = cbHashSize; 
+      BYTE RGBBufferHash[16] = {0}; 
+      std::ostringstream oss; 
 
       if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
         std::cout << "CryptAcquireContext failed" << std::endl;
@@ -66,7 +57,6 @@ class Utility {
         exit(1);
       }
 
-      // Retrieve the hash value into RGBBufferHash
       if (!CryptGetHashParam(hHash, HP_HASHVAL, RGBBufferHash, &dwCount, 0)) {
         DWORD dwError = GetLastError();
         std::cout << "CryptGetHashParam (for hash value) failed with error: " << dwError << std::endl;
@@ -94,7 +84,6 @@ class ClientHandler {
         int storage_bytes;
         std::string lineBuffer;
 
-        //client information
         sockaddr_in client_info;
         int client_info_size = sizeof(client_info);
         getpeername(client_socket, (struct sockaddr *)&client_info, &client_info_size);
@@ -109,7 +98,7 @@ class ClientHandler {
           auto now = std::chrono::system_clock::now();
           auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_recived_time);
 
-          if (duration.count() > 1000) {
+          if (duration.count() > TIMEOUT_MS) {
             std::cout << "Client timed out." << std::endl;
             break;
           }

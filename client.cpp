@@ -7,6 +7,7 @@
 
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 443
+#define TIMEOUT_MS 1000
 
 int main() {
     WSADATA wsaData;
@@ -46,12 +47,13 @@ int main() {
         }
 
         auto send_time = std::chrono::system_clock::now();
+        bool acknowledged = false;
 
-        while (true) {
+        while (!acknowledged) {
             auto now = std::chrono::system_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - send_time);
 
-            if (duration.count() > 1000) {
+            if (duration.count() > TIMEOUT_MS) {
                 std::cout << "Timeout. Resending data..." << std::endl;
                 if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {
                     std::cerr << "Failed to send data to the server" << std::endl;
@@ -64,7 +66,7 @@ int main() {
             if (bytesReceived > 0) {
                 buffer[bytesReceived] = '\0';
                 std::cout << "Server answer: " << buffer << std::endl;
-                break;  // Break the inner loop upon receiving data
+                acknowledged = true;
             } else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR) {
                 std::cerr << "Recv failed or connection closed" << std::endl;
                 break;  // Break the inner loop upon an error or closure
