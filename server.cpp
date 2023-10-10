@@ -9,6 +9,7 @@
 #include <ws2tcpip.h>
 #include <wincrypt.h>
 #include <sstream>
+#include <chrono>
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "bcrypt.lib")
@@ -49,7 +50,6 @@ class Utility {
       DWORD dwCount = cbHashSize; // Stores the size of a DWORD, which will be used to get hash parameters.
       BYTE RGBBufferHash[16] = {0}; // Initializes a byte array to hold the MD5 hash.
       std::ostringstream oss; // Creates an output string stream to convert the hash bytes into a hexadecimal string representation.
-
 
       if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
         std::cout << "CryptAcquireContext failed" << std::endl;
@@ -94,34 +94,65 @@ class ClientHandler {
         int storage_bytes;
         std::string lineBuffer;
 
-        std::cout << "We are online" << std::endl;
+        //client information
+        sockaddr_in client_info;
+        int client_info_size = sizeof(client_info);
+        getpeername(client_socket, (struct sockaddr *)&client_info, &client_info_size);
+        std::string client_id = inet_ntoa(client_info.sin_addr);
+        client_id += ":" + std::to_string(ntohs(client_info.sin_port));
+
+        auto last_recived_time = std::chrono::system_clock::now();
+
+        std::cout << "We are online. Client ID: " << client_id << std::endl;
         while (true) {
+
+          auto now = std::chrono::system_clock::now();
+          auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_recived_time);
+
+          if (duration.count() > 1000) {
+            std::cout << "Client timed out." << std::endl;
+            break;
+          }
+
           memset(buffer, 0, BUFFER_SIZE);
 
           if ((storage_bytes = recv(client_socket, buffer, BUFFER_SIZE, 0)) == SOCKET_ERROR) {
-            std::cout << "Recv failed with error code: " << WSAGetLastError() << std::endl;
-            exit(1);
+            std::cout << "Client " << client_id << " disconnected" << std::endl;
+            // std::cout << "Recv failed with error code: " << WSAGetLastError() << std::endl;
+            closesocket(client_socket);
+            break;
           }
 
           if (storage_bytes == 0) {
             std::cout << "Client disconnected" << std::endl;
+            closesocket(client_socket);
             break;
           }
 
-          lineBuffer += std::string(buffer, storage_bytes);
+          last_recived_time = std::chrono::system_clock::now();
 
-          size_t pos = 0;
-          std::string token;
-          while ((pos = lineBuffer.find("\r\n")) != std::string::npos) {
-              token = lineBuffer.substr(0, pos);
-              std::cout << token << std::endl;
 
-              std::string checksumStr = "Checksum (MD5): " + Utility::Checksum(token) + "\n";
-              if (send(client_socket, checksumStr.c_str(), checksumStr.length(), 0) == SOCKET_ERROR) {
-                  std::cout << "Send failed" << "\n" << std::endl;
-                  break;
-              }
-              lineBuffer.erase(0, pos + 2);
+          if (storage_bytes > 0) {
+            lineBuffer += std::string(buffer, storage_bytes);
+
+            size_t pos = 0;
+            std::string token;
+            while ((pos = lineBuffer.find("\r\n")) != std::string::npos) {
+                token = lineBuffer.substr(0, pos);
+
+                if (!token.empty()) {
+                  std::cout << client_id << ": " << token  << std::endl;
+                }
+
+                std::string checksumStr = "Checksum (MD5): " + Utility::Checksum(token) + "\n";
+                if (send(client_socket, checksumStr.c_str(), checksumStr.length(), 0) == SOCKET_ERROR) {
+                    std::cout << "Send failed" << "\n" << std::endl;
+                    break;
+                }
+
+
+                lineBuffer.erase(0, pos + 2);
+            }
           }
         }
     }
