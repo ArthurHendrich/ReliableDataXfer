@@ -46,7 +46,6 @@ int main() {
         if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {
             std::cerr << "Failed to send data to the server" << std::endl;
         }
-    }
     
     char buffer[1024];
     int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
@@ -55,6 +54,7 @@ int main() {
     } else {
         buffer[bytesReceived] = '\0';
         std::cout << "Server answer: " << buffer << std::endl;
+    }
     }
 
     closesocket(clientSocket);
