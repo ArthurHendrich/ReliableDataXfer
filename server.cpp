@@ -75,95 +75,71 @@ class Utility {
 };
 
 class ClientHandler {
-  public:
+public:
+    static void HandleMessage(const std::string& message, const std::string& client_id, SOCKET client_socket) {
+        std::cout << client_id << ": " << message << std::endl;
+
+        std::string checksum = Utility::Checksum(message);
+        std::cout << "Calculated Checksum (MD5): " << checksum << std::endl;
+
+        std::string response = "Checksum (MD5): " + checksum + "\n";
+        if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
+            std::cout << "Send failed" << "\n" << std::endl;
+        }
+    }
+
     static DWORD WINAPI Handle(LPVOID client_socket_ptr) {
-        SOCKET client_socket = (SOCKET) client_socket_ptr;  
-        char buffer[BUFFER_SIZE] = {0}; 
+        SOCKET client_socket = (SOCKET)client_socket_ptr;
+        char buffer[BUFFER_SIZE] = {0};
         int storage_bytes;
-        std::string lineBuffer;
 
         sockaddr_in client_info;
         int client_info_size = sizeof(client_info);
-        getpeername(client_socket, (struct sockaddr *)&client_info, &client_info_size);
+        getpeername(client_socket, (struct sockaddr*)&client_info, &client_info_size);
         std::string client_id = inet_ntoa(client_info.sin_addr);
         client_id += ":" + std::to_string(ntohs(client_info.sin_port));
 
-        auto last_recived_time = std::chrono::system_clock::now();
-
         std::cout << "We are online. Client ID: " << client_id << std::endl;
+
+        std::string lineBuffer;
+        auto last_received_time = std::chrono::system_clock::now();
+
         while (true) {
+            auto now = std::chrono::system_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_received_time);
+            if (duration.count() > TIMEOUT_MS) {
+                std::cout << "Client timed out." << std::endl;
+                break;
+            }
 
-          auto now = std::chrono::system_clock::now();
-          auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_recived_time);
+            memset(buffer, 0, BUFFER_SIZE);
 
-          if (duration.count() > TIMEOUT_MS) {
-            std::cout << "Client timed out." << std::endl;
-            break;
-          }
+            storage_bytes = recv(client_socket, buffer, BUFFER_SIZE, 0);
+            if (storage_bytes <= 0) {
+                std::cout << "Client " << client_id << " disconnected or failed" << std::endl;
+                closesocket(client_socket);
+                break;
+            }
 
-          memset(buffer, 0, BUFFER_SIZE);
+            last_received_time = std::chrono::system_clock::now();
 
-          if ((storage_bytes = recv(client_socket, buffer, BUFFER_SIZE, 0)) == SOCKET_ERROR) {
-            std::cout << "Client " << client_id << " disconnected" << std::endl;
-            // std::cout << "Recv failed with error code: " << WSAGetLastError() << std::endl;
-            closesocket(client_socket);
-            break;
-          }
-
-          if (storage_bytes == 0) {
-            std::cout << "Client disconnected" << std::endl;
-            closesocket(client_socket);
-            break;
-          }
-
-
-          last_recived_time = std::chrono::system_clock::now();
-
-
-          if (storage_bytes > 0) {
             lineBuffer += std::string(buffer, storage_bytes);
 
-            size_t pos = 0;
-            std::string token;
+            size_t pos;
             while ((pos = lineBuffer.find("\r\n")) != std::string::npos) {
-                token = lineBuffer.substr(0, pos);
-                
+                std::string token = lineBuffer.substr(0, pos);
                 if (!token.empty()) {
-                  std::cout << client_id << ": " << token  << std::endl;
-
-                  // Calculate and compare checksums
-                  std::string checksum = Utility::Checksum(token);
-                  std::cout << "Received Checksum (MD5): " << checksum << std::endl;
-
-                  // Extract the expected checksum from the message
-                  size_t checksumStart = token.find("Checksum (MD5): ");
-                  if (checksumStart != std::string::npos) {
-                      std::string expectedChecksum = token.substr(checksumStart + 16); // 16 is the length of "Checksum (MD5): "
-                      std::cout << "Received Checksum (MD5): " << expectedChecksum << std::endl;
-
-                      if (checksum == expectedChecksum) {
-                          std::cout << "Checksums match. Message is valid." << std::endl;
-                      } else {
-                          std::cout << "Checksums do not match. Message may be corrupted." << std::endl;
-                      }
-                  } else {
-                      std::cout << "Checksum not found in the message." << std::endl;
-                  }
-               }
-
-                std::string checksumStr = "Checksum (MD5): " + Utility::Checksum(token) + "\n";
-                if (send(client_socket, checksumStr.c_str(), checksumStr.length(), 0) == SOCKET_ERROR) {
-                    std::cout << "Send failed" << "\n" << std::endl;
-                    break;
+                    HandleMessage(token, client_id, client_socket);
                 }
-
 
                 lineBuffer.erase(0, pos + 2);
             }
-          }
         }
+
+        return 0;
     }
 };
+
 
 class Server {
   private:
