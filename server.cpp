@@ -1,6 +1,5 @@
 #include <iostream>
 #include <cstring>
-#include <unistd.h>
 
 #include <winsock2.h>
 #include <windows.h> 
@@ -15,7 +14,6 @@
 #define PORT 443
 #define BUFFER_SIZE 1024 
 #define TIMEOUT_MS 1000
-
 
 class Utility {
   public:
@@ -118,6 +116,7 @@ class ClientHandler {
             break;
           }
 
+
           last_recived_time = std::chrono::system_clock::now();
 
 
@@ -128,10 +127,29 @@ class ClientHandler {
             std::string token;
             while ((pos = lineBuffer.find("\r\n")) != std::string::npos) {
                 token = lineBuffer.substr(0, pos);
-
+                
                 if (!token.empty()) {
                   std::cout << client_id << ": " << token  << std::endl;
-                }
+
+                  // Calculate and compare checksums
+                  std::string checksum = Utility::Checksum(token);
+                  std::cout << "Received Checksum (MD5): " << checksum << std::endl;
+
+                  // Extract the expected checksum from the message
+                  size_t checksumStart = token.find("Checksum (MD5): ");
+                  if (checksumStart != std::string::npos) {
+                      std::string expectedChecksum = token.substr(checksumStart + 16); // 16 is the length of "Checksum (MD5): "
+                      std::cout << "Received Checksum (MD5): " << expectedChecksum << std::endl;
+
+                      if (checksum == expectedChecksum) {
+                          std::cout << "Checksums match. Message is valid." << std::endl;
+                      } else {
+                          std::cout << "Checksums do not match. Message may be corrupted." << std::endl;
+                      }
+                  } else {
+                      std::cout << "Checksum not found in the message." << std::endl;
+                  }
+               }
 
                 std::string checksumStr = "Checksum (MD5): " + Utility::Checksum(token) + "\n";
                 if (send(client_socket, checksumStr.c_str(), checksumStr.length(), 0) == SOCKET_ERROR) {

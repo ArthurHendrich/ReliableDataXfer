@@ -1,6 +1,11 @@
 #include <iostream>
+#include <cstring>
+
 #include <winsock2.h>
+#include <windows.h> 
 #include <ws2tcpip.h>
+#include <wincrypt.h>
+#include <sstream>
 #include <chrono>
 
 #pragma comment(lib, "Ws2_32.lib")
@@ -8,6 +13,50 @@
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 443
 #define TIMEOUT_MS 1000
+
+class Utility {
+  public:
+    static std::string Checksum(const std::string& data) {
+      HCRYPTPROV hProv = 0; 
+      HCRYPTHASH hHash = 0; 
+      DWORD cbHashSize = 16;
+      DWORD dwCount = cbHashSize; 
+      BYTE RGBBufferHash[16] = {0}; 
+      std::ostringstream oss; 
+
+      if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
+        std::cout << "CryptAcquireContext failed" << std::endl;
+        exit(1);
+      }
+
+      if (!CryptCreateHash(hProv, CALG_MD5, 0, 0, &hHash)) {
+        std::cout << "CryptCreateHash failed" << std::endl;
+        exit(1);
+      }
+
+      if (!CryptHashData(hHash, (BYTE *)data.c_str(), data.length(), 0)) {
+        std::cout << "CryptHashData failed" << std::endl;
+        exit(1);
+      }
+
+      if (!CryptGetHashParam(hHash, HP_HASHVAL, RGBBufferHash, &dwCount, 0)) {
+        DWORD dwError = GetLastError();
+        std::cout << "CryptGetHashParam (for hash value) failed with error: " << dwError << std::endl;
+        exit(1);
+      }
+      
+      for (int  i = 0; i < cbHashSize; i++) {
+        oss << std::hex << (int)RGBBufferHash[i];
+      }
+
+
+      CryptDestroyHash(hHash);
+      CryptReleaseContext(hProv, 0);
+
+      return oss.str();
+    }
+
+};
 
 int main() {
     WSADATA wsaData;
@@ -40,6 +89,9 @@ int main() {
         if (strcmp(message, "exit") == 0) {
             break;
         }
+
+        std::string checksum = Utility::Checksum(std::string(message));
+        std::cout << "Checksum (MD5): " << checksum << std::endl;
         strcat(message, "\r\n");
 
         if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {
