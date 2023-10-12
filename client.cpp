@@ -82,6 +82,7 @@ int main() {
         exit(1);
     }
 
+    int sequence_number = 0;
     while (true) {
         char message[1024];
         std::cout << "Send a message or type 'exit' to quit: ";
@@ -94,11 +95,17 @@ int main() {
         std::cout << "Checksum (MD5): " << checksum << std::endl;
         // strcat(message, "\r\n");
 
-        std::string message_with_checksum = std::string(message) + "|" + checksum + "\r\n";
 
-        if (send(clientSocket, message_with_checksum.c_str(), message_with_checksum.length(), 0) == SOCKET_ERROR) {
+
+        //std::string message_with_checksum = std::string(message) + "|" + checksum + "\r\n";
+
+        std::string message_with_checksum_and_seq = std::to_string(sequence_number) + "|" + std::string(message) + "|" + checksum + "\r\n";
+
+
+        if (send(clientSocket, message_with_checksum_and_seq.c_str(), message_with_checksum_and_seq.length(), 0) == SOCKET_ERROR) {
             std::cerr << "Failed to send data to the server" << std::endl;
         }
+
 
         auto send_time = std::chrono::system_clock::now();
         bool acknowledged = false;
@@ -126,13 +133,14 @@ int main() {
                 if (serverResponse.find("ACK") != std::string::npos) {
                   std::cout << "Server acknowledged: " << buffer << std::endl;
                   acknowledged = true;
+                  sequence_number++;
                 } else if (serverResponse.find("NACK") != std::string::npos) {
                   std::cout << "Server indicated a problem (NACK). Resending..." << std::endl;
                   
-                  if (send(clientSocket, message_with_checksum.c_str(), message_with_checksum.length(), 0) == SOCKET_ERROR) {
+                  if (send(clientSocket, message_with_checksum_and_seq.c_str(), message_with_checksum_and_seq.length(), 0) == SOCKET_ERROR) {
                     std::cerr << "Failed to resend data to the server" << std::endl;
                   }
-                    send_time = std::chrono::system_clock::now();
+                  send_time = std::chrono::system_clock::now();
                 }
             } else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR) {
                 std::cerr << "Recv failed or connection closed" << std::endl;

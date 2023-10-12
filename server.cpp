@@ -7,6 +7,7 @@
 #include <wincrypt.h>
 #include <sstream>
 #include <chrono>
+#include <map>
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "bcrypt.lib")
@@ -14,6 +15,8 @@
 #define PORT 443
 #define BUFFER_SIZE 1024 
 #define TIMEOUT_MS 1000
+
+
 
 class Utility {
   public:
@@ -76,23 +79,36 @@ class Utility {
 
 class ClientHandler {
 public:  
-    static void HandleMessage(const std::string& message, const std::string& client_checksum, const std::string& client_id, SOCKET client_socket) {
-      std::cout << client_id << ": " << message << std::endl;
+    static std::map<std::string, int> last_received_sequence;
 
-      std::string calculated_checksum = Utility::Checksum(message);
-      std::cout << "Calculated Checksum (MD5): " << calculated_checksum << std::endl;
+    static void HandleMessage(const std::string& message, const std::string& client_checksum, const std::string& client_id, SOCKET client_socket, int sequence_number) {
+        std::cout << client_id << ": " << message << std::endl;
 
-      if (calculated_checksum == client_checksum) {
-        std::string response = "ACK: Message received successfully.\n";
-        if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
-            std::cout << "Send failed" << "\n" << std::endl;
+        std::string calculated_checksum = Utility::Checksum(message);
+        std::cout << "Calculated Checksum (MD5): " << calculated_checksum << std::endl;
+
+        // Check if the sequence number is the next expected one
+        if (last_received_sequence[client_id] == sequence_number) {
+            if (calculated_checksum == client_checksum) {
+                std::string response = "ACK: Message received successfully.\n";
+                if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
+                    std::cout << "Send failed" << "\n" << std::endl;
+                }
+            } else {
+                std::string response = "NACK: Message corrupted.\n";
+                if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
+                    std::cout << "Send failed" << "\n" << std::endl;
+                }
+            }
+            // Update the last received sequence number
+            last_received_sequence[client_id] = sequence_number + 1;
+        } else {
+            // Handle out-of-sequence messages, for example, by sending a NACK
+            std::string response = "NACK: Out-of-sequence message.\n";
+            if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
+                std::cout << "Send failed" << "\n" << std::endl;
+            }
         }
-      } else {
-        std::string response = "NACK: Message corrupted.\n";
-        if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
-            std::cout << "Send failed" << "\n" << std::endl;
-        }
-      }
     }
 
 
@@ -107,6 +123,10 @@ public:
         std::string client_id = inet_ntoa(client_info.sin_addr);
         client_id += ":" + std::to_string(ntohs(client_info.sin_port));
 
+        if (last_received_sequence.find(client_id) == last_received_sequence.end()) {
+            last_received_sequence[client_id] = 0;
+        }
+        
         std::cout << "We are online. Client ID: " << client_id << std::endl;
 
         std::string lineBuffer;
@@ -138,10 +158,14 @@ public:
               std::string token = lineBuffer.substr(0, pos);
             
               if (!token.empty()) {
-                  size_t delimiter_pos = token.find("|");
-                  std::string message = token.substr(0, delimiter_pos);
-                  std::string checksum = token.substr(delimiter_pos + 1);
-                  HandleMessage(message, checksum, client_id, client_socket); 
+                  size_t first_delimiter_pos = token.find("|");
+                  size_t second_delimiter_pos = token.find("|", first_delimiter_pos + 1);
+                  
+                  int sequence_number = std::stoi(token.substr(0, first_delimiter_pos));
+                  std::string message = token.substr(first_delimiter_pos + 1, second_delimiter_pos - first_delimiter_pos - 1);
+                  std::string checksum = token.substr(second_delimiter_pos + 1);
+
+                  HandleMessage(message, checksum, client_id, client_socket, sequence_number);
               }
 
               lineBuffer.erase(0, pos + 2);
@@ -152,6 +176,7 @@ public:
     }
 };
 
+std::map<std::string, int> ClientHandler::last_received_sequence;
 
 class Server {
   private:
@@ -228,6 +253,7 @@ class Server {
       }
     }
 };
+
 
 int main() {
   Server server;
