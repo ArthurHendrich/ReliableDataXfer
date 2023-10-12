@@ -75,18 +75,26 @@ class Utility {
 };
 
 class ClientHandler {
-public:
-    static void HandleMessage(const std::string& message, const std::string& client_id, SOCKET client_socket) {
-        std::cout << client_id << ": " << message << std::endl;
+public:  
+    static void HandleMessage(const std::string& message, const std::string& client_checksum, const std::string& client_id, SOCKET client_socket) {
+      std::cout << client_id << ": " << message << std::endl;
 
-        std::string checksum = Utility::Checksum(message);
-        std::cout << "Calculated Checksum (MD5): " << checksum << std::endl;
+      std::string calculated_checksum = Utility::Checksum(message);
+      std::cout << "Calculated Checksum (MD5): " << calculated_checksum << std::endl;
 
-        std::string response = "Checksum (MD5): " + checksum + "\n";
+      if (calculated_checksum == client_checksum) {
+        std::string response = "ACK: Message received successfully.\n";
         if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
             std::cout << "Send failed" << "\n" << std::endl;
         }
+      } else {
+        std::string response = "NACK: Message corrupted.\n";
+        if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
+            std::cout << "Send failed" << "\n" << std::endl;
+        }
+      }
     }
+
 
     static DWORD WINAPI Handle(LPVOID client_socket_ptr) {
         SOCKET client_socket = (SOCKET)client_socket_ptr;
@@ -127,12 +135,16 @@ public:
 
             size_t pos;
             while ((pos = lineBuffer.find("\r\n")) != std::string::npos) {
-                std::string token = lineBuffer.substr(0, pos);
-                if (!token.empty()) {
-                    HandleMessage(token, client_id, client_socket);
-                }
+              std::string token = lineBuffer.substr(0, pos);
+            
+              if (!token.empty()) {
+                  size_t delimiter_pos = token.find("|");
+                  std::string message = token.substr(0, delimiter_pos);
+                  std::string checksum = token.substr(delimiter_pos + 1);
+                  HandleMessage(message, checksum, client_id, client_socket); 
+              }
 
-                lineBuffer.erase(0, pos + 2);
+              lineBuffer.erase(0, pos + 2);
             }
         }
 

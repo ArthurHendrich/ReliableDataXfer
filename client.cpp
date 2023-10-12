@@ -92,9 +92,11 @@ int main() {
 
         std::string checksum = Utility::Checksum(std::string(message));
         std::cout << "Checksum (MD5): " << checksum << std::endl;
-        strcat(message, "\r\n");
+        // strcat(message, "\r\n");
 
-        if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {
+        std::string message_with_checksum = std::string(message) + "|" + checksum + "\r\n";
+
+        if (send(clientSocket, message_with_checksum.c_str(), message_with_checksum.length(), 0) == SOCKET_ERROR) {
             std::cerr << "Failed to send data to the server" << std::endl;
         }
 
@@ -117,11 +119,24 @@ int main() {
             int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
             if (bytesReceived > 0) {
                 buffer[bytesReceived] = '\0';
-                std::cout << "Server answer: " << buffer << std::endl;
-                acknowledged = true;
+                // std::cout << "Server answer: " << buffer << std::endl;
+                // acknowledged = true;
+                std::string serverResponse = std::string(buffer);
+
+                if (serverResponse.find("ACK") != std::string::npos) {
+                  std::cout << "Server acknowledged: " << buffer << std::endl;
+                  acknowledged = true;
+                } else if (serverResponse.find("NACK") != std::string::npos) {
+                  std::cout << "Server indicated a problem (NACK). Resending..." << std::endl;
+                  
+                  if (send(clientSocket, message_with_checksum.c_str(), message_with_checksum.length(), 0) == SOCKET_ERROR) {
+                    std::cerr << "Failed to resend data to the server" << std::endl;
+                  }
+                    send_time = std::chrono::system_clock::now();
+                }
             } else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR) {
                 std::cerr << "Recv failed or connection closed" << std::endl;
-                break;  // Break the inner loop upon an error or closure
+                break;  
             }
         }
     }
