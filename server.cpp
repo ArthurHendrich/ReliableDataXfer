@@ -92,7 +92,7 @@ public:
         EnterCriticalSection(&CriticalSection);
         if (last_received_sequence[client_id] == sequence_number) {
             if (calculated_checksum == client_checksum) {
-                std::string response = "ACK: Message received successfully.\n";
+                std::string response = "ACK: " + std::to_string(sequence_number) + ": Message received successfully.\n";
                 if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
                     std::cout << "Send failed" << "\n" << std::endl;
                 }
