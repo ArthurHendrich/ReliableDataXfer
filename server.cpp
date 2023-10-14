@@ -9,14 +9,13 @@
 #include <chrono>
 #include <map>
 
+
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "bcrypt.lib")
 
 #define PORT 443
 #define BUFFER_SIZE 1024 
 #define TIMEOUT_MS 1000
-
-
 
 class Utility {
   public:
@@ -79,6 +78,8 @@ class Utility {
 
 class ClientHandler {
 public:  
+    static CRITICAL_SECTION CriticalSection;
+
     static std::map<std::string, int> last_received_sequence;
 
     static void HandleMessage(const std::string& message, const std::string& client_checksum, const std::string& client_id, SOCKET client_socket, int sequence_number) {
@@ -87,7 +88,7 @@ public:
         std::string calculated_checksum = Utility::Checksum(message);
         std::cout << "Calculated Checksum (MD5): " << calculated_checksum << std::endl;
 
-        // Check if the sequence number is the next expected one
+        EnterCriticalSection(&CriticalSection);
         if (last_received_sequence[client_id] == sequence_number) {
             if (calculated_checksum == client_checksum) {
                 std::string response = "ACK: Message received successfully.\n";
@@ -100,15 +101,15 @@ public:
                     std::cout << "Send failed" << "\n" << std::endl;
                 }
             }
-            // Update the last received sequence number
             last_received_sequence[client_id] = sequence_number + 1;
         } else {
-            // Handle out-of-sequence messages, for example, by sending a NACK
             std::string response = "NACK: Out-of-sequence message.\n";
             if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
                 std::cout << "Send failed" << "\n" << std::endl;
             }
         }
+
+        LeaveCriticalSection(&CriticalSection);
     }
 
 
@@ -254,12 +255,16 @@ class Server {
     }
 };
 
+CRITICAL_SECTION ClientHandler::CriticalSection;
+
 
 int main() {
+  InitializeCriticalSection(&ClientHandler::CriticalSection);
   Server server;
   server.Start();
-
   WSACleanup(); 
+  DeleteCriticalSection(&ClientHandler::CriticalSection);
+
 
   return 0;
 }
