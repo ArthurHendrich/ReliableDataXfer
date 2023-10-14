@@ -16,6 +16,9 @@
 #define PORT 443
 #define BUFFER_SIZE 1024 
 #define TIMEOUT_MS 1000
+#define WINDOW_SIZE 4 // control data flow
+
+
 
 class Utility {
   public:
@@ -79,9 +82,7 @@ class Utility {
 class ClientHandler {
 public:  
     static CRITICAL_SECTION CriticalSection;
-
     static std::map<std::string, int> last_received_sequence;
-
     static void HandleMessage(const std::string& message, const std::string& client_checksum, const std::string& client_id, SOCKET client_socket, int sequence_number) {
         std::cout << client_id << ": " << message << std::endl;
 
@@ -111,8 +112,6 @@ public:
 
         LeaveCriticalSection(&CriticalSection);
     }
-
-
     static DWORD WINAPI Handle(LPVOID client_socket_ptr) {
         SOCKET client_socket = (SOCKET)client_socket_ptr;
         char buffer[BUFFER_SIZE] = {0};
@@ -214,7 +213,6 @@ class Server {
         exit(1);
       }
     }
-
     void Start() {
       while (true) {
         int size_of_address = sizeof(address); 
@@ -236,7 +234,6 @@ class Server {
       }
       Stop();
     }
-
     void Stop() {
       if (shutdown(file_descriptor, SD_BOTH) == SOCKET_ERROR) {
         std::cout << "Shutdown failed" << std::endl;
