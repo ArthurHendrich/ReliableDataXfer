@@ -12,13 +12,15 @@
 #include <thread>
 #include <vector>
 
+#include <random>
+
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "bcrypt.lib")
 
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 443
 #define TIMEOUT_MS 1000
-#define WINDOW_SIZE 4
+#define WINDOW_SIZE 5
 #define MESSAGE_SIZE 1024
 
 
@@ -60,27 +62,48 @@ public:
     CryptDestroyHash(hHash);
     CryptReleaseContext(hProv, 0);
 
+    // Uncomment this to checksum error
+    // return "1234567890";
+
     return oss.str();
   }
 };
 
 class Client {
   private:
+    std::mt19937 gen;
     SOCKET clientSocket;
     sockaddr_in serverAddr;
     int send_base;
     int next_seq_num;
-    std::map<int, std::string> unacknowledgedPackets;  // NEW: to keep track of unacknowledged packets
+    std::map<int, std::string> unacknowledgedPackets; 
 
 
   public:
-    Client();
+    Client() : gen(std::random_device{}()), send_base(0), next_seq_num(0) {
+      WSADATA wsaData;
+      int err = WSAStartup(MAKEWORD(2, 2), &wsaData);
+      if (err != 0) {
+        std::cerr << "WSAStartup failed with error: " << err << std::endl;
+        exit(1);
+      }
+
+      clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+      if (clientSocket == INVALID_SOCKET) {
+        std::cerr << "Failed to create client socket" << std::endl;
+        exit(1);
+      }
+
+      serverAddr.sin_family = AF_INET;
+      serverAddr.sin_port = htons(SERVER_PORT);
+      serverAddr.sin_addr.s_addr = inet_addr(SERVER_IP);
+    }
+    // Client();
     void Connect();
     void Run();
     void Close();
     void sendPacket(const std::string& packet, int seq_num);
     static DWORD WINAPI sendPacketWrapper(LPVOID param);
-
 };
 
 void Client::sendPacket(const std::string& packet, int seq_num) {
@@ -89,25 +112,41 @@ void Client::sendPacket(const std::string& packet, int seq_num) {
   }
 }
 
+// Uncomment this to simulate errors
+// void Client::sendPacket(const std::string& packet, int seq_num) {
+//     // int random_number = std::uniform_int_distribution<>(1, 100)(gen);
+//     // if (random_number <= 10) {
+//     //     std::cout << "Generated random number: " << random_number << std::endl;
+//     //     std::cout << "Simulating error for packet with sequence number " << seq_num << std::endl;
+//     //     return;
+//     // }
 
-Client::Client() : send_base(0), next_seq_num(0) {
-  WSADATA wsaData;
-  int err = WSAStartup(MAKEWORD(2, 2), &wsaData);
-  if (err != 0) {
-    std::cerr << "WSAStartup failed with error: " << err << std::endl;
-    exit(1);
-  }
+//     if (send(clientSocket, packet.c_str(), packet.length(), 0) == SOCKET_ERROR) {
+//         int error = WSAGetLastError();
+//         std::cerr << "Failed to send packet with sequence number " << seq_num << std::endl;
+//         std::cerr << "Socket Error Code: " << error << std::endl;
 
-  clientSocket = socket(AF_INET, SOCK_STREAM, 0);
-  if (clientSocket == INVALID_SOCKET) {
-    std::cerr << "Failed to create client socket" << std::endl;
-    exit(1);
-  }
+//         // Handle specific errors or exit
+//         switch (error) {
+//             case WSAECONNRESET:
+//                 std::cerr << "Connection reset by peer.\n";
+//                 // Handle this error specifically
+//                 break;
+//             case WSAETIMEDOUT:
+//                 std::cerr << "Connection timed out.\n";
+//                 // Handle this error specifically
+//                 break;
+//             default:
+//                 std::cerr << "An unknown error occurred.\n";
+//                 // Exit or handle differently
+//                 break;
+//         }
+//     } else {
+//         std::cout << "Successfully sent packet with sequence number " << seq_num << std::endl;
+//     }
+// }
 
-  serverAddr.sin_family = AF_INET;
-  serverAddr.sin_port = htons(SERVER_PORT);
-  serverAddr.sin_addr.s_addr = inet_addr(SERVER_IP);
-}
+
 
 DWORD WINAPI Client::sendPacketWrapper(LPVOID param) {
     std::pair<Client*, std::pair<std::string, int>>* args = (std::pair<Client*, std::pair<std::string, int>>*)param;
@@ -117,7 +156,7 @@ DWORD WINAPI Client::sendPacketWrapper(LPVOID param) {
 
     client->sendPacket(packet, seq_num);
 
-    delete args;  // Free the dynamically allocated memory
+    delete args; 
     return 0;
 }
 
@@ -144,7 +183,7 @@ void Client::Run() {
       std::cout << "Checksum (MD5): " << checksum << std::endl;
 
       message_with_checksum_and_seq = std::to_string(next_seq_num) + "|" + std::string(message) + "|" + checksum + "\r\n";
-      unacknowledgedPackets[next_seq_num] = message_with_checksum_and_seq;  // Store the packet
+      unacknowledgedPackets[next_seq_num] = message_with_checksum_and_seq;  
 
       
       DWORD threadId;
@@ -167,7 +206,6 @@ void Client::Run() {
     while (!acknowledged) {
       auto now = std::chrono::system_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - send_time);
-
       if (duration.count() > TIMEOUT_MS) {
         std::cout << "Timeout. Resending data..." << std::endl;
         if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {

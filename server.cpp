@@ -16,7 +16,7 @@
 #define PORT 443
 #define BUFFER_SIZE 1024 
 #define TIMEOUT_MS 1000
-#define WINDOW_SIZE 4 // control data flow
+#define WINDOW_SIZE 4 
 
 
 
@@ -89,7 +89,9 @@ public:
         std::string calculated_checksum = Utility::Checksum(message);
         std::cout << "Calculated Checksum (MD5): " << calculated_checksum << std::endl;
 
+        // Sleep(5000); // -Test timeout
         EnterCriticalSection(&CriticalSection);
+        int num = 0;
         if (last_received_sequence[client_id] == sequence_number) {
             if (calculated_checksum == client_checksum) {
                 std::string response = "ACK: " + std::to_string(sequence_number) + ": Message received successfully.\n";
@@ -97,7 +99,7 @@ public:
                     std::cout << "Send failed" << "\n" << std::endl;
                 }
             } else {
-                std::string response = "NACK: Message corrupted.\n";
+                std::string response = "NACK: Message corrupted - Checksum Invalid.\n";
                 if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
                     std::cout << "Send failed" << "\n" << std::endl;
                 }
@@ -112,6 +114,7 @@ public:
 
         LeaveCriticalSection(&CriticalSection);
     }
+
     static DWORD WINAPI Handle(LPVOID client_socket_ptr) {
         SOCKET client_socket = (SOCKET)client_socket_ptr;
         char buffer[BUFFER_SIZE] = {0};
