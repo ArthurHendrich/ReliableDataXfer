@@ -16,7 +16,7 @@
 #define PORT 443
 #define BUFFER_SIZE 1024 
 #define TIMEOUT_MS 1000
-#define WINDOW_SIZE 4 
+#define WINDOW_SIZE 5 
 
 
 class Utility {
