@@ -107,38 +107,49 @@ class Client {
 };
 
 void Client::sendPacket(const std::string& packet, int seq_num) {
-  if (send(clientSocket, packet.c_str(), packet.length(), 0) == SOCKET_ERROR) {
-    std::cerr << "Failed to send packet with sequence number " << seq_num << std::endl;
-  }
+
+    if (send(clientSocket, packet.c_str(), packet.length(), 0) == SOCKET_ERROR) {
+        int error = WSAGetLastError();
+        std::cerr << "Failed to send packet with sequence number " << seq_num << std::endl;
+        std::cerr << "Socket Error Code: " << error << std::endl;
+
+        switch (error) {
+            case WSAECONNRESET:
+                std::cerr << "Connection reset by peer.\n";
+                break;
+            case WSAETIMEDOUT:
+                std::cerr << "Connection timed out.\n";
+                break;
+            default:
+                std::cerr << "An unknown error occurred.\n";
+                break;
+        }
+    }
 }
 
-// Uncomment this to simulate errors
+// // Uncomment this to simulate errors
 // void Client::sendPacket(const std::string& packet, int seq_num) {
-//     // int random_number = std::uniform_int_distribution<>(1, 100)(gen);
-//     // if (random_number <= 10) {
-//     //     std::cout << "Generated random number: " << random_number << std::endl;
-//     //     std::cout << "Simulating error for packet with sequence number " << seq_num << std::endl;
-//     //     return;
-//     // }
+//     int random_number = std::uniform_int_distribution<>(1, 100)(gen);
+//     if (random_number <= 10) {
+//         std::cout << "Generated random number: " << random_number << std::endl;
+//         std::cout << "Simulating error for packet with sequence number " << seq_num << std::endl;
+//         return;
+//     }
 
 //     if (send(clientSocket, packet.c_str(), packet.length(), 0) == SOCKET_ERROR) {
 //         int error = WSAGetLastError();
 //         std::cerr << "Failed to send packet with sequence number " << seq_num << std::endl;
 //         std::cerr << "Socket Error Code: " << error << std::endl;
 
-//         // Handle specific errors or exit
 //         switch (error) {
 //             case WSAECONNRESET:
 //                 std::cerr << "Connection reset by peer.\n";
-//                 // Handle this error specifically
 //                 break;
 //             case WSAETIMEDOUT:
 //                 std::cerr << "Connection timed out.\n";
-//                 // Handle this error specifically
 //                 break;
 //             default:
 //                 std::cerr << "An unknown error occurred.\n";
-//                 // Exit or handle differently
 //                 break;
 //         }
 //     } else {
@@ -230,12 +241,14 @@ void Client::Run() {
           std::string seq_num_str = serverResponse.substr(start, end - start);
 
           try {
+            std::cout << "Attempting to convert sequence number string: '" << seq_num_str << "'" << std::endl;  // Debugging line
             int ack_seq_num = std::stoi(seq_num_str);
             unacknowledgedPackets.erase(ack_seq_num);  // Remove the packet from the map
             send_base = ack_seq_num + 1;
             acknowledged = true;
           } catch (const std::invalid_argument& ia) {
             std::cerr << "Invalid argument: " << ia.what() << std::endl;
+            std::cerr << "Failed to convert sequence number string: '" << seq_num_str << "'" << std::endl;  // Debugging line
             break;
           } catch (const std::out_of_range& oor) {
             std::cerr << "Out of Range error: " << oor.what() << std::endl;

@@ -19,7 +19,6 @@
 #define WINDOW_SIZE 4 
 
 
-
 class Utility {
   public:
     static void InitializeWinSock() {
@@ -79,6 +78,8 @@ class Utility {
 
 };
 
+int max_retransmission_count = 3;
+
 class ClientHandler {
 public:  
     static CRITICAL_SECTION CriticalSection;
@@ -89,28 +90,36 @@ public:
         std::string calculated_checksum = Utility::Checksum(message);
         std::cout << "Calculated Checksum (MD5): " << calculated_checksum << std::endl;
 
-        // Sleep(5000); // -Test timeout
+
         EnterCriticalSection(&CriticalSection);
-        int num = 0;
-        if (last_received_sequence[client_id] == sequence_number) {
-            if (calculated_checksum == client_checksum) {
-                std::string response = "ACK: " + std::to_string(sequence_number) + ": Message received successfully.\n";
-                if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
-                    std::cout << "Send failed" << "\n" << std::endl;
+
+
+        int restransmission_count = 0;
+      
+        while (restransmission_count < max_retransmission_count) {
+            if (last_received_sequence[client_id] == sequence_number) {
+                if (calculated_checksum == client_checksum) {
+                    std::string response = "ACK: " + std::to_string(sequence_number) + ": Message received successfully.\n";
+                    if (send(client_socket, response.c_str(), response.length(), 0) != SOCKET_ERROR) {
+                        last_received_sequence[client_id] = sequence_number + 1;
+                        break;  // Exit the loop as the message was acknowledged
+                    }
+                } else {
+                    std::string response = "NACK: Message corrupted - Checksum Invalid.\n";
+                    send(client_socket, response.c_str(), response.length(), 0);
                 }
             } else {
-                std::string response = "NACK: Message corrupted - Checksum Invalid.\n";
-                if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
-                    std::cout << "Send failed" << "\n" << std::endl;
-                }
+                std::string response = "NACK: Out-of-sequence message.\n";
+                send(client_socket, response.c_str(), response.length(), 0);
             }
-            last_received_sequence[client_id] = sequence_number + 1;
-        } else {
-            std::string response = "NACK: Out-of-sequence message.\n";
-            if (send(client_socket, response.c_str(), response.length(), 0) == SOCKET_ERROR) {
-                std::cout << "Send failed" << "\n" << std::endl;
-            }
+            restransmission_count++;
         }
+
+        if (restransmission_count == max_retransmission_count) {
+            std::cout << "Max retransmissions reached for client " << client_id << ". Giving up.\n";
+        }
+
+        last_received_sequence[client_id] = sequence_number + 1;
 
         LeaveCriticalSection(&CriticalSection);
     }
