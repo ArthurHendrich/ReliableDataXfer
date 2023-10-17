@@ -181,7 +181,7 @@ void Client::Connect() {
 void Client::Run() {
   char message[MESSAGE_SIZE];
   std::string message_with_checksum_and_seq; 
-
+  int count = 0;
   while (true) {
     while (next_seq_num < send_base + WINDOW_SIZE) {
       std::cout << "Send a message or type 'exit' to quit: ";
@@ -229,42 +229,38 @@ void Client::Run() {
       int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
       if (bytesReceived > 0) {
         buffer[bytesReceived] = '\0';
-        // std::cout << "Server answer: " << buffer << std::endl;
-        // acknowledged = true;
         std::string serverResponse = std::string(buffer);
 
-        if (serverResponse.find("ACK") != std::string::npos) {
-          std::cout << "Server acknowledged: " << buffer << std::endl;
-
-          size_t start = serverResponse.find("ACK: ") + 5;
-          size_t end = serverResponse.find(":", start);  // Find the next colon after "ACK: "
-          std::string seq_num_str = serverResponse.substr(start, end - start);
-
+        if (serverResponse.find("ACK:") != std::string::npos) {
+          size_t start = serverResponse.find("ACK:") + 4;
+          size_t end = serverResponse.find(":", start);
+          std::string ack_seq_num_str = serverResponse.substr(start, end - start);
+          
           try {
-            std::cout << "Attempting to convert sequence number string: '" << seq_num_str << "'" << std::endl;  // Debugging line
-            int ack_seq_num = std::stoi(seq_num_str);
-            unacknowledgedPackets.erase(ack_seq_num);  // Remove the packet from the map
-            send_base = ack_seq_num + 1;
-            acknowledged = true;
+            int ack_seq_num = std::stoi(ack_seq_num_str);
+            if (ack_seq_num == next_seq_num - 1) {
+              std::cout << "Server acknowledged: " << serverResponse << std::endl;
+              unacknowledgedPackets.erase(ack_seq_num);
+              send_base = ack_seq_num + 1;
+              acknowledged = true;
+              count++;
+            }
           } catch (const std::invalid_argument& ia) {
             std::cerr << "Invalid argument: " << ia.what() << std::endl;
-            std::cerr << "Failed to convert sequence number string: '" << seq_num_str << "'" << std::endl;  // Debugging line
+            std::cerr << "Failed to convert sequence number string: '" << ack_seq_num_str << "'" << std::endl;  // Debugging line
             break;
           } catch (const std::out_of_range& oor) {
             std::cerr << "Out of Range error: " << oor.what() << std::endl;
             break;
           }
-        }
-        else if (serverResponse.find("NACK") != std::string::npos) {
+        } else if (serverResponse.find("NACK") != std::string::npos) {
           std::cout << "Server indicated a problem (NACK). Resending..." << std::endl;
-
           if (send(clientSocket, message_with_checksum_and_seq.c_str(), message_with_checksum_and_seq.length(), 0) == SOCKET_ERROR) {
             std::cerr << "Failed to resend data to the server" << std::endl;
           }
           send_time = std::chrono::system_clock::now();
         }
-      }
-      else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR) {
+      } else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR) {
         std::cerr << "Recv failed or connection closed" << std::endl;
         Close();
         exit(1);
@@ -281,6 +277,7 @@ void Client::Run() {
     }
   }
 }
+
 
 void Client::Close() {
     closesocket(clientSocket);
