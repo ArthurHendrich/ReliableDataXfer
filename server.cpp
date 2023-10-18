@@ -79,6 +79,7 @@ class Utility {
 };
 
 int max_retransmission_count = 3;
+bool serverFlag = true;
 
 class ClientHandler {
 public:  
@@ -138,7 +139,7 @@ public:
         if (last_received_sequence.find(client_id) == last_received_sequence.end()) {
             last_received_sequence[client_id] = 0;
         }
-        
+        send(client_socket, (char*)&serverFlag, sizeof(serverFlag), 0);
         std::cout << "We are online. Client ID: " << client_id << std::endl;
 
         std::string lineBuffer;
@@ -265,6 +266,7 @@ class Server {
 };
 
 CRITICAL_SECTION ClientHandler::CriticalSection;
+
 
 
 int main() {
