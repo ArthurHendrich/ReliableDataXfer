@@ -127,13 +127,13 @@ void Client::sendPacket(const std::string& packet, int seq_num) {
     }
 }
 
-// // Uncomment this to simulate errors
+// // Uncomment this to simulate errors SEQUENCE NUMBER
 // void Client::sendPacket(const std::string& packet, int seq_num) {
 //     int random_number = std::uniform_int_distribution<>(1, 100)(gen);
 //     if (random_number <= 10) {
 //         std::cout << "Generated random number: " << random_number << std::endl;
 //         std::cout << "Simulating error for packet with sequence number " << seq_num << std::endl;
-//         return;
+//         return; 
 //     }
 
 //     if (send(clientSocket, packet.c_str(), packet.length(), 0) == SOCKET_ERROR) {

@@ -19,7 +19,7 @@
 #define WINDOW_SIZE 5 
 
 int max_retransmission_count = 3;
-bool serverFlag = true;
+bool serverFlag = false;
 
 class Utility {
   public:
@@ -101,6 +101,7 @@ public:
       
         while (restransmission_count < max_retransmission_count) {
             if (last_received_sequence[client_id] == sequence_number) {
+                // std::cout << "DEBUGG" << std::endl; -- ADJUST SEQUENCE NUMBER
                 if (calculated_checksum == client_checksum) {
                     std::string response = "ACK: " + std::to_string(sequence_number) + ": Message received successfully.\n";
                     if (send(client_socket, response.c_str(), response.length(), 0) != SOCKET_ERROR) {
@@ -119,7 +120,13 @@ public:
         }
 
         if (restransmission_count == max_retransmission_count) {
-            std::cout << "Max retransmissions reached for client " << client_id << ". Giving up.\n";
+            std::string response = "Max retransmissions reached. Giving up.\n";
+            std::cout << "Max retransmissions reached for the client: " << client_id << ". Giving UP." << std::endl;
+            if (send(client_socket, response.c_str(), response.length(), 0) != SOCKET_ERROR) {
+              std::cout << "Client " << client_id << " disconnected or failed" << std::endl;
+              closesocket(client_socket);
+            }
+            closesocket(client_socket);
         }
 
         last_received_sequence[client_id] = sequence_number + 1;
@@ -152,6 +159,7 @@ public:
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_received_time);
             if (duration.count() > TIMEOUT_MS) {
                 std::cout << "Client timed out." << std::endl;
+                closesocket(client_socket);
                 break;
             }
 
