@@ -178,109 +178,212 @@ void Client::Connect() {
   }
 }
 
+bool clientFlag;
+
 void Client::Run() {
-  char message[MESSAGE_SIZE];
-  std::string message_with_checksum_and_seq; 
+    char message[MESSAGE_SIZE];
+    std::string message_with_checksum_and_seq; 
+    int count = 0;
+    recv(clientSocket, (char*)&clientFlag, sizeof(clientFlag), 0);
+    if(clientFlag == true){
+        while (true) {
+            while (next_seq_num < send_base + WINDOW_SIZE) {
+                std::cout << "Send a message or type 'exit' to quit: ";
+                std::cin.getline(message, sizeof(message));
+                if (strcmp(message, "exit") == 0) {
+                    break;
+                }
 
-  while (true) {
-    while (next_seq_num < send_base + WINDOW_SIZE) {
-      std::cout << "Send a message or type 'exit' to quit: ";
-      std::cin.getline(message, sizeof(message));
-      if (strcmp(message, "exit") == 0) {
-        break;
-      }
+                std::string checksum = Utility::Checksum(std::string(message));
+                std::cout << "Checksum (MD5): " << checksum << std::endl;
 
-      std::string checksum = Utility::Checksum(std::string(message));
-      std::cout << "Checksum (MD5): " << checksum << std::endl;
+                message_with_checksum_and_seq = std::to_string(next_seq_num) + "|" + std::string(message) + "|" + checksum + "\r\n";
+                unacknowledgedPackets[next_seq_num] = message_with_checksum_and_seq;  
 
-      message_with_checksum_and_seq = std::to_string(next_seq_num) + "|" + std::string(message) + "|" + checksum + "\r\n";
-      unacknowledgedPackets[next_seq_num] = message_with_checksum_and_seq;  
+                
+                DWORD threadId;
+                HANDLE hThread = CreateThread(NULL, 0, Client::sendPacketWrapper, new std::pair<Client*, std::pair<std::string, int>>(this, std::make_pair(message_with_checksum_and_seq, next_seq_num)), 0, &threadId);
+                
+                if (hThread == NULL) {
+                    std::cout << "CreateThread failed" << std::endl;
+                    exit(1);
+                } else {
+                    CloseHandle(hThread);
+                }
 
-      
-      DWORD threadId;
-      HANDLE hThread = CreateThread(NULL, 0, Client::sendPacketWrapper, new std::pair<Client*, std::pair<std::string, int>>(this, std::make_pair(message_with_checksum_and_seq, next_seq_num)), 0, &threadId);
-      
-      if (hThread == NULL) {
-        std::cout << "CreateThread failed" << std::endl;
-        exit(1);
-      } else {
-        CloseHandle(hThread);
-      }
+                next_seq_num++;
+            }
 
-      next_seq_num++;
+
+            auto send_time = std::chrono::system_clock::now();
+            bool acknowledged = false;
+
+            while (!acknowledged) {
+                auto now = std::chrono::system_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - send_time);
+                if (duration.count() > TIMEOUT_MS) {
+                    std::cout << "Timeout. Resending data..." << std::endl;
+                    if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {
+                        std::cerr << "Failed to send data to the server" << std::endl;
+                    }
+                    send_time = std::chrono::system_clock::now();
+                }
+
+                char buffer[MESSAGE_SIZE] = {0};
+                int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+                if (bytesReceived > 0) {
+                    buffer[bytesReceived] = '\0';
+                    std::string serverResponse = std::string(buffer);
+
+                    if (serverResponse.find("ACK:") != std::string::npos) {
+                        size_t start = serverResponse.find("ACK:") + 4;
+                        size_t end = serverResponse.find(":", start);
+                        std::string ack_seq_num_str = serverResponse.substr(start, end - start);
+                        
+                        try {
+                            int ack_seq_num = std::stoi(ack_seq_num_str);
+                            if (ack_seq_num == next_seq_num - 1) {
+                                std::cout << "Server acknowledged: " << serverResponse << std::endl;
+                                unacknowledgedPackets.erase(ack_seq_num);
+                                send_base = ack_seq_num + 1;
+                                acknowledged = true;
+                                // count++;
+                            }
+                        } 
+                        catch (const std::invalid_argument& ia) {
+                            std::cerr << "Invalid argument: " << ia.what() << std::endl;
+                            std::cerr << "Failed to convert sequence number string: '" << ack_seq_num_str << "'" << std::endl;  // Debugging line
+                            break;
+                        } 
+                        catch (const std::out_of_range& oor) {
+                            std::cerr << "Out of Range error: " << oor.what() << std::endl;
+                            break;
+                        }
+                    } 
+                    else if (serverResponse.find("NACK") != std::string::npos) {
+                        std::cout << "Server indicated a problem (NACK). Resending..." << std::endl;
+                        if (send(clientSocket, message_with_checksum_and_seq.c_str(), message_with_checksum_and_seq.length(), 0) == SOCKET_ERROR) {
+                            std::cerr << "Failed to resend data to the server" << std::endl;
+                        }
+                        send_time = std::chrono::system_clock::now();
+                    }
+                } 
+                else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR) {
+                    std::cerr << "Recv failed or connection closed" << std::endl;
+                    Close();
+                    exit(1);
+                }
+
+                if (duration.count() > TIMEOUT_MS) {
+                    for (auto& entry : unacknowledgedPackets) {
+                        int seq_num = entry.first;
+                        std::string packet = entry.second;
+                        sendPacket(packet, seq_num);
+                    }
+                    send_time = std::chrono::system_clock::now();
+                }
+            }
+        }
     }
+    else{
+        while (true) {
+            std::cout << "Send a message or type 'exit' to quit: ";
+            std::cin.getline(message, sizeof(message));
+            if (strcmp(message, "exit") == 0) {
+                break;
+            }
 
+            std::string checksum = Utility::Checksum(std::string(message));
+            std::cout << "Checksum (MD5): " << checksum << std::endl;
 
-    auto send_time = std::chrono::system_clock::now();
-    bool acknowledged = false;
+            message_with_checksum_and_seq = std::to_string(next_seq_num) + "|" + std::string(message) + "|" + checksum + "\r\n";
+            unacknowledgedPackets[next_seq_num] = message_with_checksum_and_seq;  
 
-    while (!acknowledged) {
-      auto now = std::chrono::system_clock::now();
-      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - send_time);
-      if (duration.count() > TIMEOUT_MS) {
-        std::cout << "Timeout. Resending data..." << std::endl;
-        if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {
-          std::cerr << "Failed to send data to the server" << std::endl;
+          
+            DWORD threadId;
+            HANDLE hThread = CreateThread(NULL, 0, Client::sendPacketWrapper, new std::pair<Client*, std::pair<std::string, int>>(this, std::make_pair(message_with_checksum_and_seq, next_seq_num)), 0, &threadId);
+          
+            if (hThread == NULL) {
+                std::cout << "CreateThread failed" << std::endl;
+                exit(1);
+            }
+            else {
+                CloseHandle(hThread);
+            }
+
+          // next_seq_num++;
+            auto send_time = std::chrono::system_clock::now();
+            bool acknowledged = false;
+
+            while (!acknowledged) {
+                auto now = std::chrono::system_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - send_time);
+                if (duration.count() > TIMEOUT_MS) {
+                    std::cout << "Timeout. Resending data..." << std::endl;
+                    if (send(clientSocket, message, strlen(message), 0) == SOCKET_ERROR) {
+                        std::cerr << "Failed to send data to the server" << std::endl;
+                    }
+                    send_time = std::chrono::system_clock::now();
+                }
+
+                char buffer[MESSAGE_SIZE] = {0};
+                int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+                if (bytesReceived > 0) {
+                    buffer[bytesReceived] = '\0';
+                    std::string serverResponse = std::string(buffer);
+
+                    if (serverResponse.find("ACK:") != std::string::npos) {
+                        std::cout << "Server acknowledged: " << buffer << std::endl;
+                        size_t start = serverResponse.find("ACK:") + 5;
+                        size_t end = serverResponse.find(":", start);
+                        std::string ack_seq_num_str = serverResponse.substr(start, end - start);
+                      
+                        try {
+                            int ack_seq_num = std::stoi(ack_seq_num_str);
+                            if (ack_seq_num == next_seq_num) {
+                                unacknowledgedPackets.erase(ack_seq_num);
+                                send_base = next_seq_num++;
+                                acknowledged = true;
+                                // count++;
+                            }
+                        }
+                        catch (const std::invalid_argument& ia) {
+                            std::cerr << "Invalid argument: " << ia.what() << std::endl;
+                            std::cerr << "Failed to convert sequence number string: '" << ack_seq_num_str << "'" << std::endl;  // Debugging line
+                            break;
+                        }
+                        catch (const std::out_of_range& oor) {
+                            std::cerr << "Out of Range error: " << oor.what() << std::endl;
+                            break;
+                        }
+                    }
+                    else if (serverResponse.find("NACK") != std::string::npos) {
+                        std::cout << "Server indicated a problem (NACK). Resending..." << std::endl;
+                        if (send(clientSocket, message_with_checksum_and_seq.c_str(), message_with_checksum_and_seq.length(), 0) == SOCKET_ERROR) {
+                            std::cerr << "Failed to resend data to the server" << std::endl;
+                        }
+                        send_time = std::chrono::system_clock::now();
+                    }
+                }
+                else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR) {
+                  std::cerr << "Recv failed or connection closed" << std::endl;
+                  Close();
+                  exit(1);
+                }
+
+                if (duration.count() > TIMEOUT_MS) {
+                    for (auto& entry : unacknowledgedPackets) {
+                        int seq_num = entry.first;
+                        std::string packet = entry.second;
+                        sendPacket(packet, seq_num);
+                    }
+                    send_time = std::chrono::system_clock::now();
+                }
+            }
         }
-        send_time = std::chrono::system_clock::now();
-      }
-
-      char buffer[MESSAGE_SIZE] = {0};
-      int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-      if (bytesReceived > 0) {
-        buffer[bytesReceived] = '\0';
-        // std::cout << "Server answer: " << buffer << std::endl;
-        // acknowledged = true;
-        std::string serverResponse = std::string(buffer);
-
-        if (serverResponse.find("ACK") != std::string::npos) {
-          std::cout << "Server acknowledged: " << buffer << std::endl;
-
-          size_t start = serverResponse.find("ACK: ") + 5;
-          size_t end = serverResponse.find(":", start);  // Find the next colon after "ACK: "
-          std::string seq_num_str = serverResponse.substr(start, end - start);
-
-          try {
-            std::cout << "Attempting to convert sequence number string: '" << seq_num_str << "'" << std::endl;  // Debugging line
-            int ack_seq_num = std::stoi(seq_num_str);
-            unacknowledgedPackets.erase(ack_seq_num);  // Remove the packet from the map
-            send_base = ack_seq_num + 1;
-            acknowledged = true;
-          } catch (const std::invalid_argument& ia) {
-            std::cerr << "Invalid argument: " << ia.what() << std::endl;
-            std::cerr << "Failed to convert sequence number string: '" << seq_num_str << "'" << std::endl;  // Debugging line
-            break;
-          } catch (const std::out_of_range& oor) {
-            std::cerr << "Out of Range error: " << oor.what() << std::endl;
-            break;
-          }
-        }
-        else if (serverResponse.find("NACK") != std::string::npos) {
-          std::cout << "Server indicated a problem (NACK). Resending..." << std::endl;
-
-          if (send(clientSocket, message_with_checksum_and_seq.c_str(), message_with_checksum_and_seq.length(), 0) == SOCKET_ERROR) {
-            std::cerr << "Failed to resend data to the server" << std::endl;
-          }
-          send_time = std::chrono::system_clock::now();
-        }
-      }
-      else if (bytesReceived == 0 || bytesReceived == SOCKET_ERROR) {
-        std::cerr << "Recv failed or connection closed" << std::endl;
-        Close();
-        exit(1);
-      }
-
-      if (duration.count() > TIMEOUT_MS) {
-        for (auto& entry : unacknowledgedPackets) {
-          int seq_num = entry.first;
-          std::string packet = entry.second;
-          sendPacket(packet, seq_num);
-        }
-        send_time = std::chrono::system_clock::now();
-      }
     }
-  }
 }
+
 
 void Client::Close() {
     closesocket(clientSocket);
@@ -289,7 +392,7 @@ void Client::Close() {
 
 
 int main() {
-   Client client;
+    Client client;
     client.Connect();
     client.Run();
     client.Close();

@@ -16,8 +16,10 @@
 #define PORT 443
 #define BUFFER_SIZE 1024 
 #define TIMEOUT_MS 1000
-#define WINDOW_SIZE 4 
+#define WINDOW_SIZE 5 
 
+int max_retransmission_count = 3;
+bool serverFlag = true;
 
 class Utility {
   public:
@@ -78,7 +80,7 @@ class Utility {
 
 };
 
-int max_retransmission_count = 3;
+
 
 class ClientHandler {
 public:  
@@ -91,6 +93,7 @@ public:
         std::cout << "Calculated Checksum (MD5): " << calculated_checksum << std::endl;
 
 
+        // Sleep(5000); // -Test timeout
         EnterCriticalSection(&CriticalSection);
 
 
@@ -102,7 +105,7 @@ public:
                     std::string response = "ACK: " + std::to_string(sequence_number) + ": Message received successfully.\n";
                     if (send(client_socket, response.c_str(), response.length(), 0) != SOCKET_ERROR) {
                         last_received_sequence[client_id] = sequence_number + 1;
-                        break;  // Exit the loop as the message was acknowledged
+                        break;  
                     }
                 } else {
                     std::string response = "NACK: Message corrupted - Checksum Invalid.\n";
@@ -138,8 +141,8 @@ public:
         if (last_received_sequence.find(client_id) == last_received_sequence.end()) {
             last_received_sequence[client_id] = 0;
         }
-        
-        std::cout << "We are online. Client ID: " << client_id << std::endl;
+        send(client_socket, (char*)&serverFlag, sizeof(serverFlag), 0);
+        std::cout << "Client Connected. Client ID: " << client_id << std::endl;
 
         std::string lineBuffer;
         auto last_received_time = std::chrono::system_clock::now();
@@ -226,6 +229,9 @@ class Server {
       }
     }
     void Start() {
+      std::cout << "[-] We are online - Be Welcome" << std::endl;
+      (serverFlag == true) ? std::cout << "[-] Server is running with Go-Back-N protocol\n" << std::endl : std::cout << "[-] Server is running with Stop-and-Wait protocol\n" << std::endl;
+
       while (true) {
         int size_of_address = sizeof(address); 
         new_socket = accept(file_descriptor, (struct sockaddr *)&address, &size_of_address);
@@ -265,6 +271,7 @@ class Server {
 };
 
 CRITICAL_SECTION ClientHandler::CriticalSection;
+
 
 
 int main() {
